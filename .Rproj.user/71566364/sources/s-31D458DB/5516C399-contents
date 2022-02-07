@@ -1,0 +1,30 @@
+library(readr)
+library(tidyr)
+library(dplyr)
+
+static <- read_csv("~/Desktop/altman_fund_static.2021.12.13.csv")
+strategy_names <- read_csv("~/Desktop/altman_strategy.2021.09.22.csv")
+dynamic <- altman_fund_dynamic_2021_12_13 <- read_csv("~/Desktop/altman_fund_dynamic.2021.12.13.csv", 
+                                                      col_types = cols(end_of_quarter_date = col_date(format = "%Y/%m/%d")))
+
+##Creating vintage peers to be able to group and calculate funds based on Altman's usage
+##of a peer being of the same strategy and the same vintage +/- a year. 
+
+static_vintage_peers <- static %>%
+  merge(dynamic, by = "altman_fund_id") %>%
+  group_by(altman_fund_id) %>%
+  filter(end_of_quarter_date == max(as.integer(end_of_quarter_date)) & !is.na(tvpi)) %>%
+  select(altman_fund_id, fund_vintage, altman_strategy_id_1, tvpi) %>%
+  merge(strategy_names, by.x = "altman_strategy_id_1", by.y = "altman_strategy_id") %>%
+  transmute(altman_fund_id, fund_vintage, sub_strategy = name, altman_parent_id, tvpi) %>%
+  merge(strategy_names, by.x = "altman_parent_id", by.y = "altman_strategy_id") %>%
+  transmute(altman_fund_id, fund_vintage, tvpi, sub_strategy, strategy = name, fund_vintage_plus_one = fund_vintage + 1, 
+            fund_vintage_minus_one = fund_vintage - 1, fund_vintage_plus_two = fund_vintage + 2, 
+            fund_vintage_minus_two = fund_vintage - 2, 
+            three_vintage_minus = paste(fund_vintage_minus_two, fund_vintage_minus_one, fund_vintage, sep = " / "),
+            three_vintage = paste(fund_vintage_minus_one, fund_vintage, fund_vintage_plus_one, sep = " / "),
+            three_vintage_plus = paste(fund_vintage, fund_vintage_plus_one, fund_vintage_plus_two, sep = " / ")) %>%
+  select(altman_fund_id, sub_strategy, strategy, fund_vintage, tvpi, three_vintage_minus, three_vintage, three_vintage_plus) %>%
+  pivot_longer(three_vintage_minus:three_vintage_plus, names_to = "vintage_grouping", values_to = "vintage_band")
+  
+
