@@ -264,3 +264,5 @@ ggplot(aes(report_date, net_benefit, color = grouped_strategy)) +
   labs(title = "Grouped Strategies Net Benefit Over Time by Vintage", x = "End of Quarter Date", 
        y = "Net Benefit", col = "Grouped Strategy") +
   theme(plot.title = element_text(hjust = 0.5))
+
+##and fin
