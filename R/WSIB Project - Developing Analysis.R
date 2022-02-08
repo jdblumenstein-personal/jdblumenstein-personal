@@ -4,6 +4,7 @@ library(lubridate)
 library(tidyr)
 library(stringr)
 
+##Reading in the cleaned up pdfs
 wsib_fund_activity <- read_csv("gitignore/Data/Cleaned/Combined_WSIB_cleaned_filtered_sheets.pdf - Sheet1.csv", 
                                col_types = cols(report_date = col_date(format = "%m/%d/%Y"), 
                                                 initial_investment_date = col_date(format = "%m/%d/%Y"), 
