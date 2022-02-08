@@ -24,7 +24,7 @@
 /*.Rcheck/
 
 # RStudio files
-#.Rproj.user/
+.Rproj.user/
 
 # produced vignettes
 vignettes/*.html
@@ -58,3 +58,4 @@ rsconnect/
 /*_files/
 
 # End of https://www.toptal.com/developers/gitignore/api/r
+.Rproj.user
