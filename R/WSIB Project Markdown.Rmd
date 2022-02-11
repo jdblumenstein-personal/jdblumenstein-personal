@@ -1,0 +1,63 @@
+---
+title: "Demistifying Private Equity - A Case Study Examining WSIB"
+author: "Justin Blumenstein"
+date: "2/9/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+I've started this project to promote my own learning, demonstrate various technical elements I have learned and to help lift the pervasive veil that exists around the world of private equity. Personally, I've been working within this world of data for two years now, and I'm consistently amazed by the lack of overall transparency that exists. I can attest to the fact that getting a large corpus of data in this field does take a lot of work. 
+
+Beyond the challenge of gathering a good, larger dataset in this domain, the field is full of obfuscating jargon, a surprising lack of standardization and various legal & accounting complexities due to various customizations within contracts and investment vehicles.
+
+As a researcher and analyst, this is quite an engaging puzzle to try and work out. However, I think it's essential to remember that in many cases these investments are being sold to and consumed by large pools of capital. Think of your insurance company, maybe your current school or alma mater's endowment or potentially the pension plan of a city, county or state worker. 
+
+This case study will zoom in on Washington State's pension plan, ran by the Washington State Investment Board. 
+
+WSIB describes their organization as:
+
+"The Washington State Investment Board manages investments for 17 retirement plans for public employees, teachers, school employees, law enforcement officers, firefighters and judges. We also manage investments for several other important public funds that benefit Washington’s industrial insurance program, colleges and universities, and developmental disability programs. WSIB’s excellent investment performance dramatically contributes to the state’s bottom line by earning the lion’s share of money needed to cover state pension benefits." 
+
+[WSIB Story](https://www.sib.wa.gov/wsib_story.pdf)
+
+One doesn't have to look far in the northwest to find someone impacted by the functioning of the Washington State Investment Board. As they oversee benefits for countless individuals. They state that their current allocation to private equity (proportion of total investments) is currently at 27.43% as of September 30, 2021. This is a sizable amount of money. 
+
+I chose WSIB for this case study for a few different reasons. As mentioned above, it can be quite difficult gathering data from sources within this domain. WSIB maintains a great deal of transparency and provides a long archive of quarterly performence reports for their private investment portfolio. 
+
+[WSIB Investment Reports](https://www.sib.wa.gov/financial/invrep.asp)
+
+On top of that, they have maintained a private equity portfolio for well over a decade at this point, and have a consistent manner of accounting and tracking their investments. I'd give all of the staff a cookie for the positive work they do to promote transparency and understanding. This could certainly not be said of every pension plan/fund throughout the states. 
+
+So, all that being said, let's try and breakdown where those dollars are going, how are the investments faring, how might we understand them when thinking through different contexts and how we might go about deepening our analysis. 
+
+##The Data and Definitions
+```{r data, include = FALSE}
+library(readr)
+library(dplyr)
+library(stringr)
+wsib_fund_activity <- read_csv("~/WSIB_project/Data/Cleaned/Combined_WSIB_cleaned_filtered_sheets.pdf - Sheet1.csv", 
+                               col_types = cols(report_date = col_date(format = "%m/%d/%Y"), 
+                                                initial_investment_date = col_date(format = "%m/%d/%Y"), 
+                                                strategy = col_factor(levels = c("Corporate Finance/Buyout - Mid", 
+                                                                                 "Growth Equity", "Corporate Finance/Buyout - Mega", 
+                                                                                 "Distressed Debt", "Corporate Finance/Buyout - Small", 
+                                                                                 "Corporate Finance/Buyout - Large", 
+                                                                                 "Venture Capital", "Special Situations", 
+                                                                                 "Special Situation", "Co-Investment", 
+                                                                                 "Mezzanine"))))
+
+wsib_fund_activity <- wsib_fund_activity %>%
+  select(1:14)
+wsib_fund_activity$fund_name <- str_remove(wsib_fund_activity$fund_name, ", L.P.$")
+wsib_fund_activity$strategy <- str_replace(wsib_fund_activity$strategy, "Special Situation$", "Special Situations")
+```
+
+
+
