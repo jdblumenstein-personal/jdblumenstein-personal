@@ -5,74 +5,62 @@ library(tidyr)
 library(stringr)
 
 ##Reading in the cleaned up pdfs
-wsib_fund_activity <- read_csv("gitignore/Data/Cleaned/Combined_WSIB_cleaned_filtered_sheets.pdf - Sheet1.csv", 
+wsib_fund_activity <- read_csv("~/WSIB_project/Data/Cleaned/Combined_WSIB_cleaned_filtered_sheets.pdf - Sheet1.csv", 
                                col_types = cols(report_date = col_date(format = "%m/%d/%Y"), 
                                                 initial_investment_date = col_date(format = "%m/%d/%Y"), 
-                                                strategy = col_factor(levels = c("Corporate Finance/Buyout - Mid", 
+                                                strategy = col_factor(levels = c("Corporate Finance/Buyout - Small", 
+                                                                                 "Corporate Finance/Buyout - Mid", 
                                                                                  "Growth Equity", "Corporate Finance/Buyout - Mega", 
-                                                                                 "Distressed Debt", "Corporate Finance/Buyout - Small", 
                                                                                  "Corporate Finance/Buyout - Large", 
-                                                                                 "Venture Capital", "Special Situations", 
+                                                                                 "Distressed Debt", "Venture Capital", 
                                                                                  "Special Situation", "Co-Investment", 
                                                                                  "Mezzanine"))))
-wsib_fund_activity <- wsib_fund_activity %>%
-  select(1:14)
+
 wsib_fund_activity$fund_name <- str_remove(wsib_fund_activity$fund_name, ", L.P.$")
-wsib_fund_activity$strategy <- str_replace(wsib_fund_activity$strategy, "Special Situation$", "Special Situations")
+
 str(wsib_fund_activity)
 
 ##I'll start by normalizing the reporting and seeking out any additional issues where data should be removed or fixed
-##I want to introduce an artificial time 0 for all ids, but first I need to make sure I pull out all artifical time 0s in the set
-uniform_starting_point <- wsib_fund_activity %>%
-  filter(contributions != 0)
-
-funds_to_examine_clipped_beginning <- uniform_starting_point %>%
+##I want to introduce an artificial time 0 for all ids
+funds_to_examine_clipped_beginning <- wsib_fund_activity %>%
   group_by(assigned_unid) %>%
   mutate(initial_investment_year = year(initial_investment_date), initial_investment_month = month(initial_investment_date),
          report_year = year(report_date), report_month = month(report_date)) %>%
   filter(report_date == min(as.integer(report_date))) %>%
-  mutate(matching_year = initial_investment_year == report_year, mathcing_month = initial_investment_month == report_month) %>%
+  mutate(matching_year = initial_investment_year == report_year, matching_month = initial_investment_month == report_month) %>%
   filter(matching_year == FALSE) %>%
   select(assigned_unid)
 
-ids_to_examine <- funds_to_examine_clipped_beginning$assigned_unid
-
-funds_to_examine_clipped_ending <- uniform_starting_point %>%
+wsib_fund_activity %>%
   group_by(assigned_unid) %>%
   mutate(report_year = year(report_date), report_month = month(report_date)) %>%
   filter(report_date == max(as.integer(report_date))) %>%
   filter(report_year != 2021)
 
-more_ids_to_examine <- funds_to_examine_clipped_ending$assigned_unid
-
-ids_to_examine_all <- c(ids_to_examine, more_ids_to_examine)
-
 funds_to_examine <- wsib_fund_activity %>%
-  filter(assigned_unid %in% ids_to_examine_all)
+  filter(assigned_unid %in% funds_to_examine_clipped_beginning$assigned_unid)
 
-##Need to annotate further but this analysis to understand that the dating is a bit off for "TPG Growth III / f0hx32ntdvxi8ezsuj1x"
-##I took the additional step of visually confirming via the pdf reports. I've also discovered that there are two other funds that 
-##WSIB adjusted the name and I need to collapse the assigned IDs. "113dq3betpg2l4hhdnzf" will collapse into "8uttvqc4bm5byh2zydeu"
-## and I'll collapse "g536990rpxbvyyfqoucu" into "ue4atzld4kkmqb9zh9w9"
+##With some examination - I see that TPG Growth III does have an incorrect initial investment date. I went back to the source
+##documents to completely affirm. I'll replace their value and set up a useful attribute called vintage. 
 
+wsib_fund_activity$initial_investment_date[which(wsib_fund_activity$assigned_unid == "f0hx32ntdvxi8ezsuj1x")] <- as.Date("2016-03-31")
 
-uniform_starting_point$assigned_unid <- str_replace(uniform_starting_point$assigned_unid, "113dq3betpg2l4hhdnzf", "8uttvqc4bm5byh2zydeu")
-uniform_starting_point$assigned_unid <- str_replace(uniform_starting_point$assigned_unid, "g536990rpxbvyyfqoucu", "ue4atzld4kkmqb9zh9w9")
+wsib_fund_activity_added_attributes <- wsib_fund_activity %>%
+  group_by(assigned_unid) %>%
+  arrange(assigned_unid, report_date) %>%
+  mutate(vintage = year(initial_investment_date), series_count = 1:n()) %>%
+  ungroup()
 
-##It appears that we have complete fund histories as the starting point matches the signalled investment date and the fund histories
-##end at the last report date. Now is the time to add an artifical time 0 so that I can capture all quarterly interval sums correctly
+##It appears that we have complete fund histories as the starting point matches the signaled investment date and the fund histories
+##end at the last report date. Now is the time to add an artificial time 0 so that I can capture all quarterly interval sums correctly
 ##i'll do so by creating a series count that starts at 1 for each fund and counts that number of reporting quarters
 
-uniform_starting_point_series <- uniform_starting_point %>%
-  group_by(assigned_unid) %>%
-  mutate(series_count = 1:n())
-
-uniform_starting_point_series_time_zero <- uniform_starting_point_series %>%
+uniform_starting_point_series_time_zero <- wsib_fund_activity_added_attributes %>%
   filter(series_count == 1) %>%
   mutate(series_count = 0, unfunded_commitment = 0, contributions = 0, distributions = 0, 
          current_market_value = 0, total_value = 0, net_benefit = 0)
 
-uniform_starting_point_artificial_zero <- rbind(uniform_starting_point_series, uniform_starting_point_series_time_zero)
+uniform_starting_point_artificial_zero <- rbind(wsib_fund_activity_added_attributes, uniform_starting_point_series_time_zero)
 
 ##Going to introduce new rows that we are going to leverage. I'm first checking and replacing any leftover nas in the set
 ##with the values we are going to be calculating. Then I'm going to calculate out the quaterly intervals between time periods for
@@ -95,9 +83,9 @@ wsib_fund_activity_quarterly <- uniform_starting_point_artificial_zero %>%
 ##Now it is time to introduce our benchmark and the corresponding data that I'm pulling from FRED - I have added a column to the data
 ##the column simply aligns the index_date to a normalized end of quarter date that aligns with the report_dates in my WSIB data
 
-sp500 <- read_csv("gitignore/Data/Cleaned/FRED_SP500_Quarterly_Interval_EOP_2012_09_30_to_2021-10-01 - FRED_SP500_Quarterly_Interval_EOP_2012_09_30_to_2021-10-01.csv", 
-                  col_types = cols(index_date = col_date(format = "%m/%d/%Y"), 
-                                   normalized_eoq_date = col_date(format = "%m/%d/%Y")))
+sp500 <- read_csv("~/WSIB_project/Data/Cleaned/S&P 500 Historical Data - investingdotcom_2001_01_01_to_2021_07_01 - Filtered and Cleaned - S&P 500 Historical Data.csv", 
+    col_types = cols(index_date = col_date(format = "%b %d, %Y"), 
+        normalized_eoq_date = col_date(format = "%m/%d/%Y")))
 
 
 wsib_fund_activity_quarterly_sp500 <- merge(wsib_fund_activity_quarterly, sp500, by.x = "report_date", 
@@ -105,7 +93,7 @@ wsib_fund_activity_quarterly_sp500 <- merge(wsib_fund_activity_quarterly, sp500,
 
 ##I need to get the latest sp500 value that matches my latest report_date for WSIB to create a growth ratio over time for the sp500
 
-sp500_current <- sp500[[37,2]]
+sp500_current <- sp500[[1,2]]
 
 ##Now I'm going to create that growth ratio and use it as a way to convert the quarterly contributions and distributions to model
 ##the concept of purchasing and selling sp500 shares at the same time these same actions are happening at the fund level. 
@@ -135,7 +123,7 @@ ks_pme_results <- wsib_fund_activity_quarterly_sp500_value %>%
 unique(wsib_fund_activity$strategy)
 buyout <- c("Corporate Finance/Buyout - Small", "Corporate Finance/Buyout - Mid", "Corporate Finance/Buyout - Large", "Corporate Finance/Buyout - Mega")
 venture <- c("Growth Equity", "Venture Capital")
-strategy_levels <- c("Venture Capital", "Growth Equity", "Corporate Finance/Buyout - Small", "Corporate Finance/Buyout - Mid", "Corporate Finance/Buyout - Large", "Corporate Finance/Buyout - Mega", "Distressed Debt", "Special Situations", "Co-Investment")
+strategy_levels <- c("Venture Capital", "Growth Equity", "Corporate Finance/Buyout - Small", "Corporate Finance/Buyout - Mid", "Corporate Finance/Buyout - Large", "Corporate Finance/Buyout - Mega", "Distressed Debt", "Special Situations", "Co-Investment", "Mezzanine")
 
 wsib_fund_vintage <- wsib_fund_activity %>%
   group_by(assigned_unid) %>%
@@ -168,7 +156,7 @@ key_metrics_results_analysis$grouped_strategy <- factor(key_metrics_results_anal
 
 library(ggplot2)
 key_metrics_results_analysis_mature <- key_metrics_results_analysis %>%
-  filter(vintage < 2018)
+  filter(vintage < 2016)
 
 wsib_fund_activity %>%
      mutate(net_cashflow = distributions - contributions, vintage = as.factor(year(initial_investment_date))) %>%
@@ -196,7 +184,8 @@ key_metrics_results_analysis_mature %>%
 key_metrics_results_analysis_mature %>%
   group_by(strategy) %>%
   summarise(total_count = n()) %>%
-  mutate(percent_strategy = total_count / sum(total_count)*100)
+  mutate(percent_strategy = total_count / sum(total_count)*100) %>%
+  arrange(desc(percent_strategy))
 
 key_metrics_results_analysis_mature %>%
   group_by(grouped_strategy) %>%
@@ -245,8 +234,8 @@ key_metrics_results_analysis_mature %>%
 key_metrics_results_analysis_mature %>%
   arrange(desc(sp500_ks_pme)) %>%
   mutate(fund_name = forcats::as_factor(fund_name)) %>%
-  ggplot(aes(y = fund_name, x = sp500_ks_pme, fill = as.factor(vintage))) +
-  geom_col() +
+  ggplot(aes(y = fund_name, x = sp500_ks_pme)) +
+  geom_col(fill = "dark blue") +
   facet_grid(rows = vars(grouped_strategy), scales = "free_y", space= "free_y") +
   labs(title = "SP500 KS PME Performance Comparison by Vintage and Grouped Strategy", subtitle = "KS PME Value of >1 Implies Over-Performance",
        x = "SP500 KS PME", y = "Fund Name", col = "Vintage") +
