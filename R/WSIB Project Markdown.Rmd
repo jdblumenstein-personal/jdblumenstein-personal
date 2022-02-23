@@ -1,25 +1,33 @@
 ---
-title: "Demistifying Private Equity - A Case Study Examining WSIB"
+title: "Demistifying Private Equity - A Case Study"
+subtitle: "Examining Washington State's Private Portfolio"
 author: "Justin Blumenstein"
 date: "2/9/2022"
-output:
-  html_document: default
-  pdf_document: default
+output: 
+  html_document:
+    theme: readable
+    toc: true
+    toc_float: false
+    toc_depth: 4
+    number_sections: false
+    df_print: kable
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 ```
 
-## Introduction
+## Personal Introduction
 
 I've started this project to promote my own learning, demonstrate various technical elements I have learned and to help lift the pervasive veil that exists around the world of private equity. Personally, I've been working within this world of data for two years now, and I'm consistently amazed by the lack of overall transparency that exists. I can attest to the fact that getting a large corpus of data in this field does take a lot of work. 
 
-Beyond the challenge of gathering a good, larger dataset in this domain, the field is full of obfuscating jargon, a surprising lack of standardization and various legal & accounting complexities due to various customizations within contracts and investment vehicles.
+Beyond the challenge of gathering a good, larger dataset in this domain, the field is full of obfuscating jargon, a surprising lack of standardization and various legal & accounting complexities due to customized investment vehicles and underlying contracts.
 
-As a researcher and analyst, this is quite an engaging puzzle to try and work out. However, I think it's essential to remember that in many cases these investments are being sold to and consumed by large pools of capital. Think of your insurance company, maybe your current school or alma mater's endowment or potentially the pension plan of a city, county or state worker. 
+As a researcher and analyst, this is quite an engaging puzzle to try and work out. However, I think it's essential to remember that in many cases these investments are being sold to and consumed by large pools of capital. Think of your insurance company, maybe your current school/alma mater's endowment or potentially the pension plan of a city, county or state worker. 
 
-This case study will zoom in on Washington State's pension plan, ran by the Washington State Investment Board. 
+## Case Study Description
+
+This case study will spotlight Washington State's pension plan, ran by the Washington State Investment Board. 
 
 WSIB describes their organization as:
 
@@ -27,21 +35,30 @@ WSIB describes their organization as:
 
 [WSIB Story](https://www.sib.wa.gov/wsib_story.pdf)
 
+**More specifically,** I'll be examining the private fund investment portfolio of WSIB. There are a lot of perceptions regarding private equity and the role it plays, so let's use WSIB's portfolio to shine a light on this investment activity.
+
+## The Data and Glossary
+
 One doesn't have to look far in the northwest to find someone impacted by the functioning of the Washington State Investment Board. As they oversee benefits for countless individuals. They state that their current allocation to private equity (proportion of total investments) is currently at 27.43% as of September 30, 2021. This is a sizable amount of money. 
 
-I chose WSIB for this case study for a few different reasons. As mentioned above, it can be quite difficult gathering data from sources within this domain. WSIB maintains a great deal of transparency and provides a long archive of quarterly performence reports for their private investment portfolio. 
+I chose WSIB for this case study for a few different reasons. As mentioned above, it can be quite difficult gathering data from sources within this domain. WSIB maintains a great deal of transparency and provides a long archive of quarterly performance reports for their private investment portfolio. 
 
 [WSIB Investment Reports](https://www.sib.wa.gov/financial/invrep.asp)
 
-On top of that, they have maintained a private equity portfolio for well over a decade at this point, and have a consistent manner of accounting and tracking their investments. I'd give all of the staff a cookie for the positive work they do to promote transparency and understanding. This could certainly not be said of every pension plan/fund throughout the states. 
+On top of that, they have maintained a private equity portfolio for well over a decade, and have a consistent manner of accounting. I'd give all of the staff a cookie for the positive work they do to promote transparency and understanding. This certainly couldn't be said of every pension fund throughout the states. 
 
-So, all that being said, let's try and breakdown where those dollars are going, how are the investments faring, how might we understand them when thinking through different contexts and how we might go about deepening our analysis. 
+So, all that being said, let's try and breakdown where those dollars are going, how are the investments faring, how might we understand them and how we might go about deepening our analysis. 
 
-##The Data and Definitions
-```{r data, include = FALSE}
+```{r dynamic data, include = FALSE}
 library(readr)
 library(dplyr)
 library(stringr)
+library(ggplot2)
+library(lubridate)
+library(forcats)
+library(tidyr)
+library(jrvFinance)
+
 wsib_fund_activity <- read_csv("~/WSIB_project/Data/Cleaned/Combined_WSIB_cleaned_filtered_sheets.pdf - Sheet1.csv", 
                                col_types = cols(report_date = col_date(format = "%m/%d/%Y"), 
                                                 initial_investment_date = col_date(format = "%m/%d/%Y"), 
@@ -57,10 +74,17 @@ wsib_fund_activity <- read_csv("~/WSIB_project/Data/Cleaned/Combined_WSIB_cleane
 wsib_fund_activity$fund_name <- str_remove(wsib_fund_activity$fund_name, ", L.P.$")
 ```
 
-```{r}
-head(wsib_fund_activity, 10)
-str(wsib_fund_activity)
+### WSIB Data
+
+A helpful note about putting the WSIB data is that the original documents all come in a pdf format. I utilized available [OCR technology](https://www.pdftoexcelconverter.net/) to help convert the data into a spreadsheet format. I did some general clean up work within the spreadsheets I used to aggregate the data. Largely, I assigned primary keys (being a [randomly generated](https://www.random.org/strings/) alphanumeric UNID). I also utilized the "initial_investment_date" provided by WSIB to filter out any fund investments that pre-dates 2009. 
+
+
+```{r demonstrating the fund data}
+glimpse(wsib_fund_activity)
 ```
+
+
+### WSIB Glossary Definitions
 
 **report_date:** Generated column based off the date of the report generated by WSIB.
 
@@ -70,28 +94,744 @@ str(wsib_fund_activity)
 
 **initial_investment_date:** Provided by WSIB - the date reflects the first date that capital was called into the investment.
 
-**commitment:** Provided by WSIB - the commitment expresses the total investment size WSIB is willing to commit to this investment
-as it calls capital over (typically) the first five years of the investment's life. 
+```{r Oaktree Opportunities Fund VIII reporting dates}
+wsib_fund_activity %>%
+  mutate(vintage = year(initial_investment_date)) %>%
+  filter(fund_name == "Oaktree Opportunities Fund VIII") %>%
+  select(report_date, assigned_unid, fund_name, initial_investment_date) %>%
+  arrange(report_date) %>%
+  head(5)
+```
 
-**Note:** It's important to understand that the commitment is a contractual amount between both parties, but it is unlikely that the fund will call exactly that amount of capital during the investment's life. There are times when WSIB will "over-commit" to the original pledge, and other times when the fund manager will strategically choose not to call up the entire amount of capital available via the original commitment. A commitment functions to guide expectations when looking over a ~ 10 year horizon. 
+**commitment:** Provided by WSIB - the commitment expresses the total investment size WSIB is willing to commit to this investment as it calls capital over (typically) the first five years of the investment's life. 
+
+*Note:* It's important to understand that the commitment is a contractual amount between both parties, but it is unlikely that the fund will call exactly that amount of capital during the investment's life. There are times when WSIB will "over-commit" to the original pledge, and other times when the fund manager will strategically choose not to call up the entire amount of capital available via the original commitment. A commitment functions to guide expectations when looking over a ~ 10 year horizon. 
 
 **contributions:** Provided by WSIB - the contributions represent the cumulative sum of capital called from WSIB to invest into the fund. The sum also includes management fees charged by the fund manager.
 
+```{r Contributions Illustration, message = FALSE, fig.align = "center"}
+chosen_theme <-   function() {
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, family = "Optima"),
+        plot.subtitle = element_text(hjust = 0.5, family = "Optima"),
+        panel.background = element_rect(fill = "gray90"),
+        axis.title = element_text(family = "Optima"))
+}
+
+
+wsib_fund_activity %>%
+  mutate(vintage = year(initial_investment_date)) %>%
+  filter(vintage == 2009 & report_date <= as.Date("2017-12-31")) %>%
+  select(report_date, assigned_unid, fund_name, commitment, contributions) %>%
+  ggplot(aes(report_date, contributions, color = assigned_unid)) +
+  geom_line() +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$")) +
+  scale_color_manual(name = "Fund Names", labels = c("HIPEP VI-Asia", "HIPEP VI-EM",
+                                                      "Oaktree VIII", "Charterhouse IX",
+                                                      "KSL Partners II", "KKR E2", 
+                                                      "Triton III"),
+                     values = c("dodgerblue4", "dodgerblue2", "springgreen4", 
+                                "forestgreen", "chartreuse4", "lightslategray", "snow4")) +
+  labs(title = "Contributions Over Time for 2009 Funds", x = "Quarterly Date", y = "Cumulative Contributions") +
+  chosen_theme()
+```
+
+*The illustration helps demonstrate the fact that the total investment is called after time, as well as the commitment working as a ceiling on the total capital called. Oaktree VIII demonstrates a quick ramp up to the $125,000,000 commitment amount made at the onset of the investment*
+
 **unfunded_commitment:** Provided by WSIB - this value helps track the outstanding capital that could be called into the investment. This term is also known as "dry powder".
 
-**current_market_value:** Provided by WSIB - the current market value is supplied by the fund manager, which utilizes a chosen methodology to value the outstanding unrealized assets. Said otherwise, this value reflects the estimated price of the remaining assets owned by the fund investment. 
+```{r Dry Powder Illustration, fig.align = "center"}
+wsib_fund_activity %>%
+  mutate(vintage = year(initial_investment_date)) %>%
+  filter(vintage == 2009 & report_date <= as.Date("2017-12-31")) %>%
+  select(report_date, assigned_unid, fund_name, unfunded_commitment) %>%
+  ggplot(aes(report_date, unfunded_commitment, color = assigned_unid)) +
+  geom_line() +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$")) +
+  scale_color_manual(name = "Fund Names", labels = c("HIPEP VI-Asia", "HIPEP VI-EM",
+                                                      "Oaktree VIII", "Charterhouse IX",
+                                                      "KSL Partners II", "KKR E2", 
+                                                      "Triton III"),
+                     values = c("dodgerblue4", "dodgerblue2", "springgreen4", 
+                                "forestgreen", "chartreuse4", "lightslategray", "snow4")) +
+  labs(title = "'Dry Powder' Over Time for 2009 Funds", x = "Quarterly Date", y = "Cumulative Contributions") +
+  chosen_theme()
+```
+
+*"Dry Powder" is largely an inverse expression of the contributions, but helps demonstrate WSIB's outstanding capital exposure. Triton III also helps to demonstrate that not all managers use all of the committed capital*
+
+**current_market_value:** Provided by WSIB - the current market value provides an estimate value of the outstanding, unrealized assets within the fund investment. Said otherwise, this value reflects the estimated price of the remaining assets owned by the fund investment. 
 
 **distributions:** Provided by WSIB - this is the realized value returned to WSIB back from the investment, as the fund manager has sold off pieces of the investment.
 
 **total_value:** Provided by WSIB - the value is simply the distributions and current_market_value added together. It's a helpful measure of thinking through both the realized and unrealized value generated by the investment.
 
+```{r Total Value Illustration, fig.align = "center"}
+wsib_fund_activity %>%
+  filter(fund_name == "Oaktree Opportunities Fund VIII") %>%
+  select(report_date, assigned_unid, fund_name, total_value, distributions, current_market_value) %>%
+  ggplot(aes(report_date, total_value)) +
+  geom_col(fill = "forestgreen") +
+  geom_col(aes(report_date, distributions), fill = "dodgerblue4") +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$")) +
+  labs(title = "Total Value Over Time for Oaktree Opportunities Fund VIII", 
+       subtitle = "Realized Distributions (Blue) versus Unrealized Marked Value (Green) Creating Total Value", 
+       x = "Quarterly Date", y = "Total Value") +
+  chosen_theme()
+```
+
+*As demonstrated with this particular fund. The total value over time should largely increase and stabilize over time. It is made up of initially the unrealized portion represented by "current market value" and then converting into realized capital returning back to WSIB as "distributions"*
+
 **tvpi:** Provided by WSIB - a ratio calculated by dividing contributions from the total value. This multiple allows for quick comparison among other investments to contrast overall performance.
+
+```{r TVPI Calc}
+wsib_fund_activity %>%
+  filter(fund_name == "Triton Fund III") %>%
+  transmute(report_date, fund_name, distributions, market_value = current_market_value, total_value, contributions, tvpi) %>%
+  head(8)
+```
+
+*Looking at one particular fund - we can see once again distributions and current market value equal the total value. If we divide the total value by contributions, then we can get an investment multiple known as "tvpi". Which shows how many times the value of the initial investment the fund has created*
 
 **net_benefit:** Provided by WSIB - a value generated by taking contributions from the total value to get a net value of what the investment has generated. 
 
+```{r Net Benefit Illustration, fig.align = "center"}
+wsib_fund_activity %>%
+  group_by(report_date) %>%
+  summarize(total_net_benefit = sum(net_benefit)) %>%
+  ggplot(aes(report_date, total_net_benefit)) +
+  geom_line(color = "dodgerblue4") +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$")) +
+  labs(title = "Total Net Benefit to WSIB Over Time", x = "Quarterly Date", y = "Total Net Benefit") +
+  chosen_theme()
+```
+
+*This illustration generalizes the entire portfolio and demonstrates the long term nature of a private fund investment strategy. Our data begins at 2009, and we can see the accumulating effects of a long term program as we can see WSIB possessing more than $20 billion in value on top of their initial investments going into 2021*
+
+**irr** Provided by WSIB - a more [complex calculation](https://www.investopedia.com/terms/i/irr.asp#:~:text=The%20internal%20rate%20of%20return,a%20discounted%20cash%20flow%20analysis.&text=It%20is%20the%20annual%20return%20that%20makes%20the%20NPV%20equal%20to%20zero.) that helps compute the rate of return of the investment when measured over time. The calculation takes into account the underlying cash flows over time, and assumes that the outstanding value has been sold at the time of the calculation. 
+
 **strategy:** Generated column based off of the labels provided by WSIB in their reports. WSIB generates subtotals by these constructed strategies, and I've made an attribute based off Q2 2021 labelled strategy.
+
+```{r strategy breakdown}
+wsib_fund_activity %>%
+  select(strategy) %>%
+  distinct(strategy) %>%
+  mutate(strategy = factor(strategy, levels = c("Venture Capital", "Growth Equity", "Corporate Finance/Buyout - Small", 
+                                                "Corporate Finance/Buyout - Mid", "Corporate Finance/Buyout - Large", 
+                                                "Corporate Finance/Buyout - Mega", "Co-Investment", "Distressed Debt", 
+                                                "Mezzanine", "Special Situation"))) %>%
+  arrange(strategy)
+```
+
+*WSIB utilizes this list of strategies to describe the general goal/strategy of the underlying fund. We can group these into three general categories.* 
+
+*Venture Capital and Growth Equity similarly seek to find private companies before they have demonstrated a working business model.* 
+
+*We also see a collection of buyout strategies that look to take majority control of different sizes of private businesses.* 
+
+*Lastly, we might create a general "Other" category, which demonstrates other types of diversification within the portfolio. Strategies that look to purchase debt instead of equity, and also targeted co-investing to provide even greater market exposure*
 
 **vintage:** Generated column based off the year of the initial investment date. This is a very commonly generated attribute in the private equity domain, and helps draw comparisons among peers that are investing at the same time periods. 
 
 **series_count:** Generated column to abstract the data away from a set date and treat each fund as moving along a lifecycle. 
 
+```{r final attributes}
+wsib_fund_activity %>%
+  arrange(report_date) %>%
+  group_by(assigned_unid) %>%
+  mutate(vintage = year(initial_investment_date), series_count = 1:n()) %>%
+  filter(fund_name == "Oaktree Opportunities Fund VIII") %>%
+  arrange(desc(series_count)) %>%
+  ungroup() %>%
+  select(report_date, fund_name, initial_investment_date, vintage, strategy, series_count) %>%
+  head(6)
+```
+
+#### The Long and Short Glossary (TL:DR)
+
+It's helpful to keep to these basics:
+
+Contributions are the capital invested
+
+Distributions are the realized returns
+
+Current Market Value reflects the unrealized value of the outstanding investment
+
+A fund investment starts with a commitment of investable capital, a laid out strategy and an initial time frame in which the investment would begin. Generally speaking, these investments will be active for a bit longer than a decade.
+
+So, we can slice up the data in a lot of different ways, but it all comes down to the basics of investing money and charting the potential, unrealized value and realized returns over a chosen horizon. 
+
+### Public Equity Data
+
+```{r sp500 data, include = FALSE}
+sp500 <- read_csv("~/WSIB_project/Data/Cleaned/S&P 500 Historical Data - investingdotcom_2001_01_01_to_2021_07_01 - Filtered and Cleaned - S&P 500 Historical Data.csv", 
+    col_types = cols(index_date = col_date(format = "%b %d, %Y"), 
+        normalized_eoq_date = col_date(format = "%m/%d/%Y")))
+```
+
+I'll be utilizing the historical price history of the S&P 500 to draw some general comparisons against the private investments. I sourced my data from [investing.com](https://www.investing.com/indices/us-spx-500-historical-data).
+
+```{r sp500 data illustrated}
+head(sp500, 6)
+```
+
+I used the price column to create the "sp500_value" column, I utilized the closest date I could to a normalized end of quarter date, and then created a separate normalized column to easily pair with the report dates in the WSIB data.
+
+The S&P 500 doesn't work as a perfect comparison for all of the fund investments within the WSIB portfolio, but it does help create a general comparison to a highly identifiable public market, or even index fund. 
+
+## Analysis - Examining Portfolio Layers
+
+### Big Picture - WSIB's Private Portfolio
+
+Let's take a look over the allocation of WSIB's portfolio, and it's aggregate commitments made over time:
+
+```{r Commitment Over Time Illustration,  fig.align = "center"}
+wsib_fund_activity %>%
+  group_by(assigned_unid) %>%
+  filter(report_date == min(report_date)) %>%
+  mutate(vintage = year(initial_investment_date), 
+         strategy = factor(strategy, levels = c("Venture Capital", "Growth Equity", "Corporate Finance/Buyout - Small", 
+                                                "Corporate Finance/Buyout - Mid", "Corporate Finance/Buyout - Large", 
+                                                "Corporate Finance/Buyout - Mega", "Co-Investment", "Distressed Debt", 
+                                                "Mezzanine", "Special Situation"))) %>%
+  group_by(vintage) %>%
+  mutate(total_vintage_commitment = sum(commitment)) %>%
+  ggplot(aes(year(initial_investment_date), total_vintage_commitment, fill = strategy)) +
+  geom_col() +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$")) +
+  scale_fill_manual(values = c("snow3", "snow2", "dodgerblue4", "dodgerblue3", "dodgerblue2", 
+                               "dodgerblue1", "forestgreen", "seagreen4", "seagreen3", "seagreen2")) +
+  labs(title = "Total Commitment Made by Vintage Year", subtitle = "Broken Down by Strategy", x = "Year", y = "Total Commitment", fill = "Strategy") +
+  chosen_theme()
+```
+
+I've referenced my grouped strategies by associated hues to demonstrate strategy groupings of Buyout, Venture and Other. We can instantly observe that WSIB has been increasing their commitments over time to private equity, and that 2019 was clearly a large increase comparatively over the entire decade. 
+
+```{r Grouped Strategy Commitment Chart,  fig.align = "center"}
+buyout <- c("Corporate Finance/Buyout - Small", "Corporate Finance/Buyout - Mid", "Corporate Finance/Buyout - Large", "Corporate Finance/Buyout - Mega")
+venture <- c("Growth Equity", "Venture Capital")
+strategy_levels <- c("Venture Capital", "Growth Equity", "Corporate Finance/Buyout - Small", "Corporate Finance/Buyout - Mid", "Corporate Finance/Buyout - Large", "Corporate Finance/Buyout - Mega", "Distressed Debt", "Special Situations", "Co-Investment", "Mezzanine")
+
+
+wsib_fund_activity %>%
+  filter(report_date == max(report_date)) %>%
+  mutate(tvpi_calc = total_value / contributions, 
+         grouped_strategy = ifelse(strategy %in% buyout, "Buyout", 
+                                   ifelse(strategy %in% venture, "Venture","Other"))) %>%
+  group_by(grouped_strategy) %>%
+  summarise(total_count = n()) %>%
+  ggplot(aes(x = 1, y = total_count, fill = grouped_strategy)) +
+  geom_col() +
+  geom_text(aes(label = paste(round(total_count / sum(total_count) * 100, 1), "%")),
+            position = position_stack(vjust = 0.5), size = 8) +
+  coord_polar(theta = "y") +
+  labs(title = "Proportions of Grouped Strategy in Total Portfolio", fill = "Grouped Strategy") +
+  scale_fill_manual(values = c("dodgerblue4","forestgreen", "snow3")) +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, family = "Optima"),
+        plot.subtitle = element_text(hjust = 0.5, family = "Optima"))
+```
+
+We can see a clear allocation preference towards the general Buyout strategy. Between both charts, we can see that Venture remains a smaller proportion of the mix. The "Other" category clearly demonstrates a very small proportion of WSIB's portfolio to other diversification strategies. 
+
+Now, let's consider how these commitments are panning out. 
+
+First, let's look at the actual underlying cash flows. We can examine the real cash coming in and out of the portfolio since 2009. 
+
+```{r Net Cashflow - J Curve Illustration, message = FALSE, warning = FALSE,  fig.align = "center"}
+wsib_fund_activity %>%
+     mutate(net_cashflow = distributions - contributions, vintage = as.factor(year(initial_investment_date))) %>%
+     filter(!vintage %in% c("2021", "2020", "2019", "2018", "2017")) %>%
+     ggplot(aes(report_date, net_cashflow, color = vintage)) +
+     geom_smooth(se = FALSE) +
+     scale_y_continuous(labels = scales::label_dollar(prefix = "$")) +
+     scale_color_manual(values = c("dodgerblue4", "dodgerblue2", "springgreen4", "green4", 
+                                "forestgreen", "chartreuse4", "lightslategray", "snow4")) +
+     labs(title = "Demonstration of J-Curve Effect by Vintage Year", x = "Quarterly Date", y = "Net Cashflow", color = "Vintage") +
+     theme(plot.title = element_text(hjust = 0.5, family = "Optima"),
+        plot.subtitle = element_text(hjust = 0.5, family = "Optima"),
+        panel.background = element_rect(fill = "gray90"),
+        axis.title = element_text(family = "Optima"))
+```
+
+I've clipped the vintages to 2016 or earlier, only for ease of visualizing. It's made clear by this filtered range that it normally takes a range of years for these fund investments to breakeven (surpassing $0), much less create a realized profit. We can clearly see 2011 being a breakaway year in creating investment profits for WSIB.
+
+These "J-Curves" continue to illustrate the point that these are long term investments. The beginning of these curves reflect fees and capital being called out and deployed by *primarily* purchasing private businesses. The fund managers deploy a number of different strategies to grow and extract value to return back to WSIB as distributions. The upward growth of the curves demonstrates the selling off of the underlying assets. 
+
+```{r Summed Contributions vs Total Value,  fig.align = "center"}
+wsib_fund_activity %>%
+  group_by(report_date) %>%
+  select(report_date, assigned_unid, fund_name, contributions, total_value) %>%
+  ggplot(aes(report_date, contributions)) +
+  geom_col(color = "forestgreen") +
+  geom_col(aes(report_date, total_value), fill = "dodgerblue4", alpha = 0.9) +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$")) +
+  labs(title = "Summed Contributions Compared to Summed Total Value Over Time", 
+       subtitle = "Summed Total Value (Blue) versus Summed Contributions (Green) by Quarter Date", 
+       x = "Quarterly Date", y = "$ Amount") +
+  chosen_theme()
+```
+
+Following similar portfolio themes, we can see that value creation takes a good deal of time, as we compare the investment capital made when compared to the total value provided by the investments. As of 2021, WSIB has contributed nearly $40 billion to all of their private investments, and are now looking at nearly 60 billion in total value. 
+
+```{r TVPI Boxplot,  fig.align = "center"}
+wsib_fund_activity %>%
+  filter(report_date == max(report_date)) %>%
+  mutate(tvpi_calc = total_value / contributions, 
+         grouped_strategy = ifelse(strategy %in% buyout, "Buyout", 
+            ifelse(strategy %in% venture, "Venture","Other"))) %>%
+  ggplot(aes(grouped_strategy, tvpi_calc)) +
+  geom_boxplot(color = "dodgerblue4") +
+  geom_jitter(color = "forestgreen", alpha = 0.4) +
+  labs(title = "Boxplot Analysis of Current TVPI Performance", subtitle = "Grouped Strategies with All Funds Plotted",
+       x = "Grouped Strategy", y = "Calculated TVPI") +
+  chosen_theme()
+```
+
+The Boxplot and accompanying Point plot demonstrates the expected range for investment multiple by "grouped strategy". 
+
+- On a positive note, we can see the vast bulk of investments do have a positive net investment value (tvpi >= 1). 
+- Venture funds perform better in general (currently) than Buyout funds, and demonstrate a greater positive range in general.
+- Other strategies don't perform quite as well, but also don't appear to have a lot of inherent risk involved, given the range. 
+
+**Summary Table**
+
+*Note:* DPI (Distributions to Paid In: distributions / contributions) is a common ratio utilized to help further contextualize tvpi values. Once again, framing the investments to better understand realized versus unrealized value. 
+
+```{r Summary Table}
+wsib_fund_activity %>%
+  mutate(tvpi_calc = total_value / contributions, dpi = distributions / contributions,
+         grouped_strategy = ifelse(strategy %in% buyout, "Buyout", 
+                                   ifelse(strategy %in% venture, "Venture","Other"))) %>%
+  filter(report_date == max(report_date)) %>%
+  group_by(grouped_strategy) %>%
+  summarize(mean_dpi = round(mean(dpi), 2), median_dpi = round(median(dpi), 2), sd_dpi = round(sd(dpi), 2),
+            mean_tvpi = round(mean(tvpi_calc), 2), median_tvpi = round(median(tvpi_calc), 2), sd_tvpi =        round(sd(tvpi_calc),2))
+
+```
+
+Overall, we can see that these investments are currently successful in aggregate. However, we can see that much of the value continues to be unrealized, as these investments remain outstanding for an extended period. Outliers tend to push the averages above the median, and Venture does demonstrate a good deal of volatility demonstrated by the larger standard deviation (range of the underlying investment multiples).
+
+#### Comparing Private vs Public
+
+Let's examine the dispersion of two different ways to examine a public market comparison [PME](https://www.insead.edu/sites/default/files/assets/dept/centres/gpei/docs/Measuring_PE_Fund-Performance-2019.pdf). (Public Market Equivalent)
+
+**Direct Alpha Comparisons**
+
+Direct Alpha is a calculation that provides a percent value that describes the over or under performance of the comparative index. A value of 10% would suggest that the fund investment outperformed the S&P 500, in growth of value, above and beyond the S&P 500 by 10% annually. It is designed by comparing the internal rate of return of the fund versus the rate of return generated by the same cash flows invested into the S&P 500. 
+
+```{r direct alpha boxplot comparison, warning = FALSE, fig.align = "center"}
+wsib_fund_activity_added_attributes <- wsib_fund_activity %>%
+  group_by(assigned_unid) %>%
+  arrange(assigned_unid, report_date) %>%
+  mutate(vintage = year(initial_investment_date), series_count = 1:n()) %>%
+  ungroup()
+
+uniform_starting_point_series_time_zero <- wsib_fund_activity_added_attributes %>%
+  filter(series_count == 1) %>%
+  mutate(series_count = 0, unfunded_commitment = 0, contributions = 0, distributions = 0, 
+         current_market_value = 0, total_value = 0, net_benefit = 0)
+
+uniform_starting_point_artificial_zero <- rbind(wsib_fund_activity_added_attributes, uniform_starting_point_series_time_zero)
+
+uniform_starting_point_artificial_zero$distributions <- replace_na(uniform_starting_point_artificial_zero$distributions, 0)
+
+wsib_fund_activity_quarterly <- uniform_starting_point_artificial_zero %>%
+  arrange(assigned_unid, series_count) %>%
+  group_by(assigned_unid) %>%
+  mutate(quarterly_contributions = contributions - lag(contributions), 
+         quarterly_distributions = distributions - lag(distributions)) %>%
+  filter(series_count != 0)
+
+sp500_current <- sp500[[1,2]]
+
+wsib_fund_activity_quarterly_sp500 <- merge(wsib_fund_activity_quarterly, sp500, by.x = "report_date", 
+                                            by.y = "normalized_eoq_date", all.x = TRUE)
+
+wsib_fund_activity_quarterly_sp500_value <- wsib_fund_activity_quarterly_sp500 %>%
+  mutate(sp500_growth_ratio = sp500_current / sp500_value, 
+         sp500_quarterly_contributions = sp500_growth_ratio * quarterly_contributions,
+         sp500_quarterly_distributions = sp500_growth_ratio * quarterly_distributions,
+         sp500_quarterly_net_cashflow = sp500_quarterly_distributions - sp500_quarterly_contributions)
+
+ks_pme_results <- wsib_fund_activity_quarterly_sp500_value %>%
+  group_by(assigned_unid) %>%
+  mutate(sp500_cumulative_contributions = cumsum(sp500_quarterly_contributions),
+         sp500_cumulative_distributions = cumsum(sp500_quarterly_distributions)) %>%
+  filter(report_date == "2021-06-30") %>%
+  summarize(sp500_ks_pme = (sp500_cumulative_distributions + current_market_value) / sp500_cumulative_contributions)
+
+wsib_fund_activity_quarterly_sp500_filtered_cashflow <- wsib_fund_activity_quarterly_sp500_value %>%
+  transmute(assigned_unid, series_count, quarterly_contributions, quarterly_distributions, current_market_value, 
+            quarterly_net_cashflow = quarterly_distributions - quarterly_contributions, sp500_quarterly_net_cashflow) %>%
+  group_by(assigned_unid) %>%
+  filter(series_count != max(series_count))
+
+da_pme_results <- wsib_fund_activity_quarterly_sp500_filtered_cashflow %>%
+  transmute(assigned_unid, series_count, current_market_value, 
+            quarterly_net_cashflow = quarterly_distributions - quarterly_contributions, 
+            sp500_quarterly_net_cashflow) %>%
+  group_by(assigned_unid) %>%
+  filter(series_count == max(series_count)) %>%
+  transmute(assigned_unid, series_count, quarterly_net_cashflow = quarterly_net_cashflow + current_market_value, 
+            sp500_quarterly_net_cashflow = sp500_quarterly_net_cashflow + current_market_value) %>%
+  rbind(wsib_fund_activity_quarterly_sp500_filtered_cashflow) %>%
+  arrange(assigned_unid, series_count) %>%
+  merge(wsib_fund_activity_quarterly, by = c("assigned_unid", "series_count")) %>%
+  filter(report_date <= as.Date(report_date)) %>%
+  arrange(assigned_unid, series_count) %>%
+  group_by(assigned_unid) %>%
+  mutate(alpha_calc_sp500 = round(irr(sp500_quarterly_net_cashflow) * 4, digits = 4)) %>%
+  distinct(assigned_unid, alpha_calc_sp500)
+
+public_market_comparisons <- wsib_fund_activity %>%
+  arrange(assigned_unid, report_date) %>%
+  group_by(assigned_unid) %>%
+  mutate(series_count = 1:n()) %>%
+  filter(report_date == "2021-06-30" & year(initial_investment_date) <= 2018) %>%
+  merge(ks_pme_results, by = "assigned_unid") %>%
+  merge(da_pme_results, by = "assigned_unid") %>%
+  select(assigned_unid, fund_name, strategy, series_count, tvpi, irr, sp500_ks_pme, alpha_calc_sp500)
+
+public_market_comparisons %>%
+  mutate(grouped_strategy = ifelse(strategy %in% buyout, "Buyout", 
+                                   ifelse(strategy %in% venture, "Venture","Other"))) %>%
+  ggplot(aes(grouped_strategy, alpha_calc_sp500 * 100)) +
+  geom_boxplot(color = "dodgerblue4") +
+  geom_jitter(color = "forestgreen", alpha = 0.4) +
+  labs(title = "Boxplot Analysis of Direct Alpha PME Comparison", subtitle = "Grouped Strategies with 2018 and Earlier Vintage Funds",
+       x = "Grouped Strategy", y = "Direct Alpha Percent") +
+  chosen_theme()
+```
+
+**KS PME Comparisons**
+
+KS PME works as an analogue to the TVPI calculation described above. The calculation uses the fund investments' cash flows and bases those cash flows within the S&P 500 growth values. A KS PME value can be easy to interpret as a value > 1 implies that the investment outperformed the S&P 500, and < 1 means that you would have created more value investing in the public index. 
+
+```{r KS PME Boxplot,  fig.align = "center"}
+public_market_comparisons %>%
+  mutate(grouped_strategy = ifelse(strategy %in% buyout, "Buyout", 
+                                   ifelse(strategy %in% venture, "Venture","Other"))) %>%
+  ggplot(aes(grouped_strategy, sp500_ks_pme)) +
+  geom_boxplot(color = "dodgerblue4") +
+  geom_jitter(color = "forestgreen", alpha = 0.4) +
+  labs(title = "Boxplot Analysis of KS PME Comparison", subtitle = "Grouped Strategies with 2018 and Earlier Vintage Funds",
+       x = "Grouped Strategy", y = "KS PME") +
+  chosen_theme()
+```
+
+We can draw a few conclusions from looking at both plots. First, we can continue to see echoing trends with strong performance from Buyout and Venture grouped strategies. I'd be cautious in drawing conclusions about the "Other" grouped strategy, as I've noted that they largely have debt based assets. The S&P 500 is likely a poor index to draw comparisons to. Similarly, we might examine if the S&P 500 may not be competitive enough to draw Venture comparisons. 
+
+It would be outside of the scope of this paper, but we could reference and compare multiple indices that have like for like comparisons among the different strategies to best calibrate. 
+
+#### Exogenous Factors
+
+Similarly, out of scope of this favor, but as a general point of interest would be to consider what drives value creations within these investments. We can see that though closely aligned with public markets, we do see general outperformance. However, we do know that these last couple of years have not only been unprecedented due to a global pandemic, but also the amount of fiscal support provided by congress and the federal reserve. Let's quickly look at one way to consider driving value creation within these fund investments that we can point to outside of the fund manager's activity. 
+
+```{r Impact of fiscal stimulus, warning = FALSE, message = FALSE, fig.align = "center"}
+wsib_fund_activity %>%
+  arrange(assigned_unid, report_date) %>%
+  group_by(assigned_unid) %>%
+  mutate(series_count = 1:n()) %>%
+  filter(series_count >= 7) %>%
+  mutate(q_over_q_growth_ratio = (total_value / contributions) / (lag(total_value) / lag(contributions)),
+         validation = tvpi / lag(tvpi)) %>%
+  select(report_date, series_count, assigned_unid, contributions, total_value, tvpi, q_over_q_growth_ratio, validation) %>%
+  filter(q_over_q_growth_ratio != Inf & q_over_q_growth_ratio == max(q_over_q_growth_ratio, na.rm = TRUE)) %>%
+  ggplot(aes(report_date)) +
+  geom_histogram(fill = "dodgerblue4", color = "forestgreen") +
+  labs(title = "Frequency of Highest Q over Q Growth", subtitle = "Examining the Timing of Highest Quarter over Quarter Value Creation",
+       x = "Quarterly Date", y = "No. of Funds") +
+  chosen_theme()
+```
+I've generated a metric within the data that we will call a "quarter over quarter growth ratio", which is simply calculated by taking the current tvpi value over the previous tvpi value. Tvpi (Total Value to Paid In) works well here as it captures the underlying changes in contributions so that a large contribution to the investment wouldn't be considered a large change in the underlying value of the investment. 
+
+I then captured the date in which the growth ratio was largest as a fund matures. If all value creation was manager led, then we'd expect to see a range of dates as we have a range of vintages. However, we can see a clear concentration from Q2 2020 onward. I may not be able to link direct causation here, but it is fascinating to see how much fiscal and monetary operations have supported these investments. The far majority of all investments had their best growth ratio within the pandemic. 
+
+This could certainly be an interesting case study on its own. 
+
+### Vintage and Strategy Slices
+
+Let's zoom in on strategic viewpoints to consider the benefits and risks that exists within WSIB's private portfolio. Picking up on a running theme within our earlier analysis, which is realized versus unrealized value. The general value proposition has been demonstrated when looking at overall performance, but let's consider some of the underlying risks as well. 
+
+#### Vintage Slice - Mature Funds
+
+Let's look at the most recent performance metrics on a range of WSIB's oldest funds (Vintage <= 2010), and look again at realized versus unrealized values. 
+
+```{r 2009 - 2011 Vintage Slice Table}
+wsib_fund_activity %>%
+  mutate(vintage = year(initial_investment_date)) %>%
+  filter(vintage <= 2010 & report_date == max(report_date)) %>%
+  summarize(fund_name, vintage, percent_called = round(contributions / commitment, 2), dpi = round(distributions / contributions, 2),
+            rvpi = round(current_market_value / contributions, 2), tvpi = round((distributions + current_market_value) / contributions, 2), strategy) %>%
+  arrange(desc(rvpi))
+```
+I've arranged the table to show rvpi with descending (Remaining Value to Paid In = current_market_value / contributions) values. Keeping in context, that the most recent report date is Q2 2021, it would imply that these funds should be nearing a liquidation points (merely by [common convention](https://en.wikipedia.org/wiki/Private-equity_fund#:~:text=Private%20equity%20funds%20are%20typically,the%20term%20of%20the%20fund.) of assuming approx. 10 - 12 year duration). However, we can clearly see that some of these funds still hold a fair amount of unrealized value, in some cases still more than what has been actively distributed back.
+
+This is an excellent demonstration of a harder to quantify risk about these investments vehicles. Not only do these investments remain illiquid (difficult to convert to cash), but also have very long investment windows. These risks do present a strong trade-off to the strong performance measurements we can generally see in TVPI values. 
+
+WSIB is luckily set up to manage long term liquidity risks (as they plan for expected retirement distributions to pensioners), but these risks can be harder to manage when planning so far out. 
+
+```{r breakeven concept for mature funds}
+wsib_fund_activity %>%
+  mutate(vintage = year(initial_investment_date)) %>%
+  filter(vintage <= 2011 & report_date == max(report_date)) %>%
+  summarize(fund_name, vintage, percent_called = round(contributions / commitment, 2), dpi = round(distributions / contributions, 2),
+            rvpi = round(current_market_value / contributions, 2), tvpi = round((distributions + current_market_value) / contributions, 2), strategy) %>%
+  arrange(desc(rvpi)) %>%
+  mutate(breakeven = dpi >= 1, expected_breakeven = tvpi >= 1) %>%
+  summarize(breakeven_fraction = sum(breakeven) / n(), expected_breakeven_fraction = sum(expected_breakeven) / n(), total_funds_in_mature_set = n())
+```
+
+Let's expand the set to include 2011 vintage funds as well, to illustrate one additional surprising element, which is comparing which funds at this age have actually paid for themselves (dpi >= 1) versus an expectation that they should pay for themselves (tvpi >= 1). Even at ~10+ years of management, we have still a sizable minority (approx. 35%) of funds to still pay for themselves. And approx. 10% of the funds may never pay back the capital invested at all after that amount of time. 
+
+It's hard to quantify or illustrate, but it's helpful to keep in mind that ongoing fee structures exist even at these later stages of a funds' life. This would be an interesting tangent to pursue in terms of fee activity over the life of a fund. 
+
+#### Strategy Slice - Buyout Funds
+
+We know "Buyout" to be the most common grouped strategy within the WSIB portfolio, let's make some observations about this particular grouping. 
+
+```{r Violin Plot of Buyouts, fig.align = "center"}
+wsib_fund_activity %>%
+  mutate(tvpi_calc = total_value / contributions, rvpi = current_market_value / contributions, vintage = year(initial_investment_date)) %>%
+  filter(strategy %in% buyout & report_date == "2021-06-30") %>%
+  mutate(strategy = forcats::fct_relevel(strategy, buyout)) %>%
+  ggplot(aes(y = strategy, x = tvpi_calc)) +
+  geom_violin(color = "dodgerblue4") +
+  geom_jitter(aes(y = strategy, x = tvpi_calc), color = "forestgreen", height = 0.2, alpha = 0.7) +
+  labs(title = "Violin Analysis of Buyout Grouped Strategy", subtitle = "Underlying Point Plot of Individual Funds to Illustrate",
+       x = "TVPI", y = "Strategy") +
+  chosen_theme()
+```
+
+Instantly we can see that WSIB diversifies the overall "Buyout" strategy through the size of the business being acquired. Overall, it looks like currently the best performing strategy is funds that take majority control of the largest size firms on the market. WSIB doesn't provide guidance to the underlying definitions to get a full sense of size. 
+
+I've utilized a lesser known plot, called the Violin plot, to help illustrate different ways to look over data. The violin plot is very similar to a traditional boxplot, but uses a sense of density to provide shape. The underlying point plot helps illustrate how that works in action. 
+
+The sheer scale/spread of the "Mid" category is definitely interesting. All though they are clear outliers we can see runaway successes and failures that don't exist on the same scale as the other substrategies. Making 400% on your original investment would definitely be impressive! 
+
+```{r Top Buyout Fund}
+top_fund <- wsib_fund_activity %>%
+  mutate(tvpi_calc = total_value / contributions, rvpi = current_market_value / contributions, vintage = year(initial_investment_date)) %>%
+  filter(strategy %in% buyout & report_date == "2021-06-30") %>%
+  mutate(strategy = forcats::fct_relevel(strategy, buyout)) %>%
+  top_n(1, tvpi_calc) %>%
+  select(fund_name, vintage, tvpi, strategy)
+
+top_fund
+```
+
+Let's hope `r top_fund$fund_name` can deliver all of that value to WSIB beneficiaries! 
+
+#### Comparing Private vs Public
+
+**Direct Alpha Comparisons**
+```{r Violin Analysis of Buyouts using Direct Alpha Visualization, fig.align = "center"}
+public_market_comparisons %>%
+  filter(strategy %in% buyout) %>%
+  ggplot(aes(y = strategy, x = alpha_calc_sp500 * 100)) +
+  geom_violin(color = "dodgerblue4") +
+  geom_jitter(color = "forestgreen", alpha = 0.4, height = 0.2) +
+  labs(title = "Violin Analysis of Direct Alpha PME Comparison", subtitle = "Buyout Substrategies with 2018 and Earlier Vintage Funds",
+       x = "Direct Alpha Percent", y = "Strategy") +
+  chosen_theme()
+```
+**KS PME Comparisons**
+
+```{r Violin Analysis of Buyouts using KS PME Visualization, fig.align = "center"}
+public_market_comparisons %>%
+  filter(strategy %in% buyout) %>%
+  ggplot(aes(y = strategy, x = sp500_ks_pme)) +
+  geom_violin(color = "dodgerblue4") +
+  geom_jitter(color = "forestgreen", alpha = 0.4, height = 0.2) +
+  labs(title = "Violin Analysis of KS PME Comparison", subtitle = "Buyout Substragies with 2018 and Earlier Vintage Funds",
+       x = "KS PME", y = "Strategy") +
+  chosen_theme()
+```
+
+When we look closer at Buyout sub-strategies versus the S&P 500 we can certainly they that should be a fair comparison, especially for Large and Mega sized companies, even without a specific definition from WSIB. We can still see general over performance, but that there are a number of funds that fail to beat out the general value of a comparable public market. 
+
+Based on earlier observations, we should take these comparisons quite seriously given the observed illiquidity and investment length of these private fund investments in terms of realized returns. Investing in a general index does come with the advantages of near instant liquidity (now of days). As an investor, WSIB is always calculating how much of the portfolio should they maintain in private investments in order to get aggregate out-performance, but do not see themselves constrained by not having the actual funds to pay out to retirees every year. 
+
+**Summary Table**
+
+```{r Buyout Public Market Comparison Summary Table, message = FALSE}
+public_market_comparisons %>%
+  filter(strategy %in% buyout) %>%
+  group_by(strategy) %>%
+  summarize(strategy, mean_ks_pme = round(mean(sp500_ks_pme),2), sd_ks_pme = round(sd(sp500_ks_pme), 2), 
+            mean_direct_alpha = round(mean(alpha_calc_sp500), 2), sd_direct_alpha = round(sd(alpha_calc_sp500), 2), counts = n()) %>%
+  distinct(.) %>%
+  arrange(desc(mean_direct_alpha))
+```
+As a reminder, KS PME calculates a comparable investment multiple with > 1 expressing out-performance to the S&P 500. Direct Alpha determines a rate of return delta that expresses out-performance when > 0. I'd quickly note that it's hard to determine if the S&P 500 is a poor market comparison to the "Small" sub-strategy. I'd look for both definitions and more observations before I determined anything. 
+
+Overall, we can see that the general Buyout strategy does in fact outperform in absolute terms when compared to the S&P 500 on average. However, when we look at rates of return, then we can see that the S&P 500 remains competitive when thinking through an annualized basis. We can begin to ask some critical questions of the "Mid" sub-strategy, starting again with strict definitions and thinking through market comparisons. 
+
+As we've discussed risks, presumably WSIB is weighing the bonuses stemming from diversification and getting enough higher performers to view these investments as having greater value than a passive index fund. 
+
+### Individual Fund Level Analysis
+
+Outliers are always interesting. Let's get a list of top and bottom performers by grouped strategy: 
+
+**Top Performers**
+
+```{r List of Top Performers by Grouped Strategy}
+top_performers <- wsib_fund_activity %>%
+  filter(report_date == "2021-06-30") %>%
+  mutate(tvpi_calc = total_value / contributions, vintage = year(initial_investment_date), 
+         grouped_strategy = ifelse(strategy %in% buyout, "buyout", 
+                            ifelse(strategy %in% venture, "venture","other"))) %>%
+  group_by(grouped_strategy) %>%
+  mutate(max_tvpi = max(tvpi_calc)) %>%
+  filter(max_tvpi == tvpi_calc) %>%
+  transmute(grouped_strategy, fund_name, vintage, strategy, tvpi = round(max_tvpi, 2)) %>%
+  arrange(desc(tvpi))
+
+top_performers
+```
+
+We can quickly see our top 3 funds representing each grouped strategy. The Venture and Buyout funds represent some of the large amount volatility in each sub-strategy we saw earlier. It's also interesting to note that even thought debt largely makes up the "Other" category, it was the Co-Investment that performed best. 
+
+```{r Lifecycle of Top 3 Funds by Grouped Strategy Visualization, fig.align = "center"}
+top_performers <- wsib_fund_activity %>%
+  filter(report_date == "2021-06-30") %>%
+  mutate(tvpi_calc = total_value / contributions, vintage = year(initial_investment_date), 
+         grouped_strategy = ifelse(strategy %in% buyout, "buyout", 
+                            ifelse(strategy %in% venture, "venture","other"))) %>%
+  group_by(grouped_strategy) %>%
+  mutate(max_tvpi = max(tvpi_calc)) %>%
+  filter(max_tvpi == tvpi_calc) %>%
+  transmute(grouped_strategy, assigned_unid, fund_name, vintage, strategy, tvpi = round(max_tvpi, 2)) %>%
+  arrange(desc(tvpi))
+
+
+wsib_fund_activity %>%
+  filter(assigned_unid %in% c(top_performers$assigned_unid)) %>%
+  group_by(assigned_unid) %>%
+  arrange(assigned_unid, report_date) %>%
+  mutate(series_count = 1:n(), grouped_strategy = ifelse(strategy %in% buyout, "buyout", 
+                                                         ifelse(strategy %in% venture, "venture","other"))) %>%
+  ggplot(aes(series_count, total_value, group = assigned_unid, color = grouped_strategy)) +
+  geom_line() +
+  geom_line(aes(series_count, distributions, group = assigned_unid), linetype = "dashed", size = 1) +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$")) +
+  scale_color_manual(values = c("dodgerblue4","forestgreen", "snow4")) +
+  labs(title = "Total Value and Distributions Over Series Time", subtitle = "The Top 3 Grouped Strategy Funds in Absolute Values",
+       x = "Series Count", y = "$ Total/Realized Value", color = "Grouped Strategy") +
+  chosen_theme()
+```
+
+This visualization will likely take a couple of minutes. It's made up of the same funds we identified on our list above, and it abstracts time away from a date and into a series with each count representing a quarter. So 40 quarters = 10 years, which we can generally understand when we see 2 of the 3 funds have a 2011 vintage. Next, I've visualized both the total value over time (the solid line) and also the total distributions made from the investment (the dotted line). 
+
+We can quickly see that even though the Venture fund had the highest tvpi - in absolute terms this has generated as much value as the Buyout and Other strategy funds. This would be greatly impacted by the original commitment amounts, which simply means the Venture fund has done more with less in relative terms. A solid strategy on WSIB part, as they have minimized exposure and have found themselves a windfall all the same! 
+
+It's also interesting to note the existing deltas between the total value and that which has come back to WSIB. Additionally, even though we have abstracted time, we do know that the last series count reported is on Q2 2021. Look at all the total value the Buyout fund has gathered over this past year! We need to check back in a few years and see if `r top_performers$fund_name[2]` holds onto all of that suddenly gained value! 
+
+**Bottom Performers** 
+
+```{r List of Bottom Performers by Grouped Strategy}
+bottom_performers <- wsib_fund_activity %>%
+  filter(report_date == "2021-06-30" & year(initial_investment_date) < 2021) %>%
+  mutate(tvpi_calc = total_value / contributions, vintage = year(initial_investment_date), 
+         grouped_strategy = ifelse(strategy %in% buyout, "buyout", 
+                            ifelse(strategy %in% venture, "venture","other"))) %>%
+  group_by(grouped_strategy) %>%
+  mutate(min_tvpi = min(tvpi_calc)) %>%
+  filter(min_tvpi == tvpi_calc) %>%
+  transmute(grouped_strategy, fund_name, vintage, strategy, tvpi = round(min_tvpi, 2)) %>%
+  arrange(desc(tvpi))
+
+bottom_performers
+```
+
+This is quite the spread! I even did a double take on the minimum "Other" strategy. Funds in this category demonstrate themselves as a helpful diversifying hedge. WSIB has quite consistent performance trends within this category, and clearly we see that the downside is managed as much as the topside is limited. Let's get a picture. 
+
+```{r  Lifecycle of Bottom 3 Funds by Grouped Strategy Visualization, fig.align = "center"}
+bottom_performers <- wsib_fund_activity %>%
+  filter(report_date == "2021-06-30" & year(initial_investment_date) < 2021) %>%
+  mutate(tvpi_calc = total_value / contributions, vintage = year(initial_investment_date), 
+         grouped_strategy = ifelse(strategy %in% buyout, "buyout", 
+                            ifelse(strategy %in% venture, "venture","other"))) %>%
+  group_by(grouped_strategy) %>%
+  mutate(min_tvpi = min(tvpi_calc)) %>%
+  filter(min_tvpi == tvpi_calc) %>%
+  transmute(assigned_unid, net_benefit, grouped_strategy, fund_name, vintage, strategy, tvpi = round(min_tvpi, 2)) %>%
+  arrange(desc(tvpi))
+
+
+wsib_fund_activity %>%
+  filter(assigned_unid %in% c(bottom_performers$assigned_unid)) %>%
+  group_by(assigned_unid) %>%
+  arrange(assigned_unid, report_date) %>%
+  mutate(series_count = 1:n(), grouped_strategy = ifelse(strategy %in% buyout, "buyout", 
+                                                         ifelse(strategy %in% venture, "venture","other"))) %>%
+  ggplot(aes(series_count, total_value, group = assigned_unid, color = grouped_strategy)) +
+  geom_line() +
+  geom_line(aes(series_count, distributions, group = assigned_unid), linetype = "dashed", size = 1) +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$")) +
+  scale_color_manual(values = c("dodgerblue4","forestgreen", "snow4")) +
+  labs(title = "Total Value and Distributions Over Series Time", subtitle = "The Bottom 3 Grouped Strategy Funds in Absolute Values",
+       x = "Series Count", y = "$ Total/Realized Value", color = "Grouped Strategy") +
+  chosen_theme()
+```
+
+Well it's clear that `r bottom_performers$fund_name[3]` has given up the game. WSIB has notated that in real terms it has lost
+nearly $60 million on the fund investment as of Q2 2021! It's tail shows that there isn't any real value left in the fund to distribute any longer. 
+
+Conversely, we see pandemic level stimulus breath a little more life into the other two funds? What do you think? The upticks aren't nearly as dramatic as our top performers, but we can see hints of it. The deltas between the dotted and solid lines show there is still some time left in those funds. 
+
+#### Comparing Private vs Public
+
+Let's pick out a few top and bottom performers. Since we know Buyouts to be a relatively good fit for comparison, let's pick the top 3 Buyout funds when comparing direct alpha values. 
+
+```{r Top 3 Direct Alpha Buyout Funds}
+public_market_comparisons %>%
+  filter(strategy %in% buyout) %>%
+  top_n(3, alpha_calc_sp500) %>%
+  select(fund_name, strategy, tvpi, irr, alpha_calc_sp500)
+```
+
+As we've seen. Tvpi is effective calculation to consider the amount of value gained based upon the total contributions put in, an investment multiple. IRR and similarly, Direct Alpha, looks to measure how quickly it took you to make your return. It's a calculated estimate to help provide an annualized perspective. Hence, an IRR calculation can help provide a contextualizing balance to the overall investment multiple as the length it takes to get to even those higher returns will push down the overall rate of return.
+
+Let's see if we can't visualize this concept:
+
+```{r Top 3 Direct Alpha PME Funds Over Time Visualized, fig.align = "center"}
+top_alpha <- public_market_comparisons %>%
+  filter(strategy %in% buyout) %>%
+  top_n(3, alpha_calc_sp500) %>%
+  select(assigned_unid, fund_name, strategy, tvpi, irr, alpha_calc_sp500)
+
+wsib_fund_activity %>%
+  group_by(assigned_unid) %>%
+  filter(assigned_unid %in% top_alpha$assigned_unid) %>%
+  arrange(assigned_unid, report_date) %>%
+  mutate(series_count = 1:n(), vintage = year(initial_investment_date)) %>%
+  ggplot(aes(series_count, total_value, color = fund_name)) +
+  geom_line() +
+  scale_y_continuous(labels = scales::label_dollar(prefix = "$")) +
+  scale_color_manual(values = c("dodgerblue4","forestgreen", "snow4")) +
+  labs(title = "Total Value and Distributions Over Top Performing Direct Alpha Funds", subtitle = "The Top 3 Buyout Funds in Absolute Terms",
+       x = "Series Count", y = "$ Total Value", color = "Fund Name") +
+  chosen_theme()
+```
+
+The different contrasting points come out nicely in the line plot. Here we see Francisco Partners IV creating greater total value (even when factoring in contributions), but we visually see a steeper trajectory on New Mountain Partners V. New Mountain Partners V is demonstrating a quicker rate to get to its own value. It also helps that the fund is clearly a newer vintage. Finally, GTCR XI shows that you can achieve both a high investment multiple and rate of return - that's a steep climb! 
+
+GTCR XI has come up a number of times in our analysis. With more research, I'd love to determine what "portfolio company" (a company owned by the fund investment) is driving all of that value. I imagine I could uncover some relevant data with enough digging. 
+
+## Final Thoughts
+
+We've covered a lot of ground in a general analysis. I hope I've succeeded in my study to help illuminate more obscure aspects of this asset class, as well as dig up some potentially interesting questions too! It's been an engaging project that has truly tested all of my skills. 
+
+I believe it's clear to see that there is a lot to consider when running a private equity portfolio, and I've only scratched the surface! We looked over WSIB's private portfolio allocation, and the general performance of grouped categories. In doing so, we've witnessed strong performance, but also have gleaned some of the trade offs that come with this asset class. Long investment windows where the value remains unrealized for an almost equally long duration. 
+
+We interpreted public market comparisons to better understand when we are making a fair comparison, and what questions we might be asking when doing so. Also, we saw that it's helpful to consider both ways to consider market out-performance, and considered some critical questions as to when and why you might be better off investing in a passive index fund. 
+
+Lastly, we zoomed in on particular funds of interest, which help solidified many of the recurring themes we were seeing throughout the earlier analysis. We are also left with interesting questions that I haven't pursued in this inquiry. What was the impact of all the recent fiscal and monetary stimulus? Did it benefit all types of funds, or certain strategies? 
+
+Also, what was in GTCR XI's underlying portfolio investments? What companies did they purchase, and the who and how behind all of that value creation? There are plenty of other more technical questions that exists as well; definitions, methodologies and more granular reporting metrics (like fees!). 
+
+All of this was sourced from public information, and a little bit of know how as to how to put it all together. I encourage every reader to feel undaunted by the veil of mysteries cast over the world of private equity. These aren't simple investments, but all of the fundamentals still apply, and at the heart of these dollars are people's retirement and benefits. We shouldn't allow these funds to get so abstracted that we can't ask engaging questions as to how our collective capital is being put to use! 
+
+Feel free to contact me if you'd like to ask further questions, or engage in a new project! 
